@@ -68,7 +68,19 @@ func main() {
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.URLFormat)
 
-	router.Post("/url", save.New(log, storage))
+	//подключаем хендлеры
+	//раздаем права доступа
+	router.Route("/url", func(r chi.Router) {
+		r.Use(middleware.BasicAuth("url-shortener", map[string]string{
+			cfg.HTTPServer.User: cfg.HTTPServer.Password,
+		}))
+
+		// подключаем для авторизованных post-эндпоинт
+		r.Post("/", save.New(log, storage))
+
+	})
+
+	// подключаем для всех get-эндпоинт
 	router.Get("/{alias}", redirect.New(log, storage))
 
 	log.Info("starting server", slog.String("address", cfg.Address))
