@@ -2,12 +2,15 @@ package main
 
 import (
 	"log/slog"
+	"net/http"
 	"os"
 	"url-shortener/internal/config"
+	"url-shortener/internal/http-server/handlers/redirect"
 	"url-shortener/internal/lib/logger/handlers/slogpretty"
 	"url-shortener/internal/lib/logger/sl"
 	"url-shortener/internal/storage/sqlite"
 
+	"url-shortener/internal/http-server/handlers/url/save"
 	mwLogger "url-shortener/internal/http-server/middleware/logger"
 
 	"github.com/go-chi/chi/middleware"
@@ -30,8 +33,9 @@ func main() {
 	// TODO: init logger: slog
 	log := setupLogger(cfg.Env)
 
-	log.Info("starting url-shortener", slog.String("env", cfg.Env))
-	log.Debug("debug message are enabled")
+	// log.Info("starting url-shortener", slog.String("env", cfg.Env))
+	// log.Debug("debug message are enabled")
+	// log.Error("error message are enabled")
 
 	// TODO: init storage: sqlite
 	storage, err := sqlite.New(cfg.StoragePath)
@@ -41,21 +45,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	id, err := storage.SaveURL("https://google.com", "google")
-	if err != nil {
-		log.Error("failed to save url", sl.Err(err))
-		os.Exit(1)
-	}
+	// id, err := storage.SaveURL("https://google.com", "google")
+	// if err != nil {
+	// 	log.Error("failed to save url", sl.Err(err))
+	// 	os.Exit(1)
+	// }
 
-	log.Info("saved url", slog.Int64("id", id))
+	// log.Info("saved url", slog.Int64("id", id))
 
-	id, err = storage.SaveURL("https://google.com", "google")
-	if err != nil {
-		log.Error("failed to save url", sl.Err(err))
-		os.Exit(1)
-	}
-
-	_ = storage
+	// id, err = storage.SaveURL("https://google.com", "google")
+	// if err != nil {
+	// 	log.Error("failed to save url", sl.Err(err))
+	// 	os.Exit(1)
+	// }
 
 	// TODO: init router: chi, "chi render"
 	router := chi.NewRouter()
@@ -66,7 +68,24 @@ func main() {
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.URLFormat)
 
+	router.Post("/url", save.New(log, storage))
+	router.Get("/{alias}", redirect.New(log, storage))
+
+	log.Info("starting server", slog.String("address", cfg.Address))
+	srv := &http.Server{
+		Addr:         cfg.Address,
+		Handler:      router,
+		ReadTimeout:  cfg.HTTPServer.Timeout,
+		WriteTimeout: cfg.HTTPServer.Timeout,
+		IdleTimeout:  cfg.HTTPServer.IdleTimeout,
+	}
+
 	// TODO: run server
+	if err := srv.ListenAndServe(); err != nil {
+		log.Error("failed to start server")
+	}
+
+	log.Error("server stopped")
 }
 
 func setupLogger(env string) *slog.Logger {
@@ -84,7 +103,7 @@ func setupLogger(env string) *slog.Logger {
 }
 
 func setupPrettySlog() *slog.Logger {
-	opts := slogpretty.PrettyHandlerOptions {
+	opts := slogpretty.PrettyHandlerOptions{
 		SlogOpts: &slog.HandlerOptions{
 			Level: slog.LevelDebug,
 		},
